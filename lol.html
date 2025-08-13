@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>rutuja.api</title>
+  <style>
+    :root{
+      --bg:#0f172a; /* slate-900 */
+      --panel:#111827cc; /* gray-900/80 */
+      --primary:#22d3ee; /* cyan-400 */
+      --accent:#a78bfa; /* violet-400 */
+      --danger:#fb7185; /* rose-400 */
+      --text:#e5e7eb; /* gray-200 */
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;}
+    body{
+      margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial;
+      background:radial-gradient(1200px 800px at 70% -10%, #1e293b 0%, var(--bg) 60%  ),
+                 radial-gradient(900px 600px at -10% 120%, #0b1324 0%, #070b15 60%);
+      color:var(--text);
+      display:flex; align-items:center; justify-content:center; padding:16px;
+    }
+    .wrap{width:min(1100px, 100%);}
+    header{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px}
+    h1{font-size:clamp(18px, 3vw, 28px); margin:0; letter-spacing:.5px;}
+    .controls{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+    button, select{
+      background:#0b1220; color:var(--text); border:1px solid #1f2a44;
+      padding:9px 12px; border-radius:10px; cursor:pointer; font-weight:600; letter-spacing:.2px;
+      transition:transform .05s ease, box-shadow .2s ease, border-color .2s ease;
+      box-shadow:inset 0 0 0 1px #1f2a44, 0 6px 12px -8px #000;
+    }
+    button:hover, select:hover{border-color:#2b3b64}
+    button:active{transform:translateY(1px)}
+    button.primary{border-color:#155e75; box-shadow:inset 0 0 0 1px #155e75, 0 10px 20px -12px #000}
+    button.danger{border-color:#7f1d1d;}
+    .hud{display:flex; align-items:center; justify-content:space-between; margin:10px 0 6px;}
+    .score{font-size:clamp(18px, 3.2vw, 32px); font-weight:800; letter-spacing:1px}
+    .score span{color:var(--primary)}
+    .board{
+      position:relative; border-radius:16px; overflow:hidden; border:1px solid #1f2a44;
+      background: linear-gradient(180deg, rgba(20,30,50,.6), rgba(5,10,20,.9));
+    }
+    canvas{display:block; width:100%; height:auto; aspect-ratio:16/9; background:transparent}
+    .net{position:absolute; inset:0; pointer-events:none; background-image: repeating-linear-gradient(180deg, transparent 0 16px, #1f2a44 16px 20px), linear-gradient(90deg, #1f2a44 0 2px, transparent 2px 100%)}
+    .panel{position:absolute; inset:auto 16px 16px auto; background:var(--panel); backdrop-filter: blur(8px); border:1px solid #1f2a44; border-radius:12px; padding:10px 12px; font-size:14px}
+    .kbd{display:inline-block; border:1px solid #334155; background:#0b1220; padding:2px 6px; border-radius:6px; font-weight:700}
+    .touch{position:absolute; inset:auto 12px 12px auto; display:flex; gap:10px}
+    .touch button{width:56px; height:56px; border-radius:999px; font-size:18px}
+    .toast{position:absolute; left:50%; top:12px; transform:translateX(-50%);
+      background:var(--panel); border:1px solid #1f2a44; padding:8px 12px; border-radius:10px;
+      font-weight:600; letter-spacing:.3px; box-shadow:0 10px 30px -20px black; opacity:0; transition:opacity .3s}
+    .toast.show{opacity:1}
+    footer{opacity:.7; text-align:center; margin-top:10px; font-size:12px}
+    a{color:var(--accent); text-decoration:none}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>🏓 Mini Ping Pong</h1>
+      <div class="controls">
+        <button id="startBtn" class="primary">Start</button>
+        <button id="pauseBtn">Pause</button>
+        <button id="resetBtn" class="danger">Reset</button>
+        <label for="difficulty" style="font-weight:700">Difficulty</label>
+        <select id="difficulty" title="Difficulty">
+          <option value="easy">Easy</option>
+          <option value="normal" selected>Normal</option>
+          <option value="hard">Hard</option>
+          <option value="insane">Insane</option>
+        </select>
+        <label for="toScore" style="font-weight:700">Play to</label>
+        <select id="toScore" title="Play to">
+          <option>5</option>
+          <option selected>10</option>
+          <option>15</option>
+        </select>
+      </div>
+    </header>
+
+    <div class="hud">
+      <div class="score">You <span id="pScore">0</span> — <span id="aiScore">0</span> CPU</div>
+      <div id="status">Press <span class="kbd">Space</span> or click Start</div>
+    </div>
+
+    <div class="board">
+      <canvas id="game" width="1280" height="720" aria-label="Ping Pong game area"></canvas>
+      <div class="net" aria-hidden="true"></div>
+      <div class="panel">
+        <div><strong>Controls</strong></div>
+        <div>PC: <span class="kbd">W</span>/<span class="kbd">S</span> or <span class="kbd">↑</span>/<span class="kbd">↓</span></div>
+        <div>Mobile: on‑screen buttons</div>
+      </div>
+      <div class="touch" id="touchCtl">
+        <button id="upBtn" aria-label="Move Up">▲</button>
+        <button id="downBtn" aria-label="Move Down">▼</button>
+      </div>
+      <div class="toast" id="toast">Paused</div>
+    </div>
+
+    <footer>
+      Built with vanilla HTML5 Canvas. © <span id="year"></span>
+    </footer>
+  </div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const startBtn = document.getElementById('startBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const pScoreEl = document.getElementById('pScore');
+  const aiScoreEl = document.getElementById('aiScore');
+  const statusEl = document.getElementById('status');
+  const difficultySel = document.getElementById('difficulty');
+  const toScoreSel = document.getElementById('toScore');
+  const upBtn = document.getElementById('upBtn');
+  const downBtn = document.getElementById('downBtn');
+  const toast = document.getElementById('toast');
+  document.getElementById('year').textContent = new Date().getFullYear();
+
+  const W = canvas.width, H = canvas.height;
+  const PADDLE_H = 110, PADDLE_W = 16, PADDLE_MARGIN = 24;
+  const BALL_R = 10;
+
+  const state = {
+    running:false, paused:false,
+    player:{ x:PADDLE_MARGIN, y:H/2 - PADDLE_H/2, vy:0, speed:6 },
+    ai:{ x:W - PADDLE_MARGIN - PADDLE_W, y:H/2 - PADDLE_H/2, vy:0, speed:5 },
+    ball:{ x:W/2, y:H/2, vx:6, vy:3 },
+    score:{ p:0, ai:0, to: parseInt(toScoreSel.value,10) },
+    aiLag: 0.18,
+  };
+
+  const DIFF = {
+    easy:{ aiSpeed:4, lag:0.28, ball:6 },
+    normal:{ aiSpeed:6, lag:0.20, ball:7 },
+    hard:{ aiSpeed:7.5, lag:0.14, ball:8 },
+    insane:{ aiSpeed:9, lag:0.10, ball:9.5 },
+  };
+
+  function setDifficulty(k){
+    const d = DIFF[k];
+    state.ai.speed = d.aiSpeed;
+    state.aiLag = d.lag;
+    const dir = Math.sign(state.ball.vx) || 1;
+    const s = d.ball;
+    state.ball.vx = dir * s;
+    state.ball.vy = clamp(state.ball.vy, -s*0.9, s*0.9);
+  }
+
+  function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+
+  function resetBall(direction = (Math.random() < 0.5 ? -1 : 1)){
+    state.ball.x = W/2; state.ball.y = H/2;
+    const speed = DIFF[difficultySel.value].ball;
+    const angle = (Math.random() * 0.7 - 0.35); // -20°..20°
+    state.ball.vx = speed * direction;
+    state.ball.vy = speed * Math.sin(angle);
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+
+    // Center glow
+    const g=ctx.createRadialGradient(W/2,H/2,50,W/2,H/2,500);
+    g.addColorStop(0,'rgba(56,189,248,0.08)');
+    g.addColorStop(1,'rgba(5,10,20,0)');
+    ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+
+    // Paddles
+    ctx.fillStyle = '#22d3ee';
+    roundRect(ctx, state.player.x, state.player.y, PADDLE_W, PADDLE_H, 8);
+    ctx.fillStyle = '#a78bfa';
+    roundRect(ctx, state.ai.x, state.ai.y, PADDLE_W, PADDLE_H, 8);
+
+    // Ball
+    ctx.beginPath(); ctx.arc(state.ball.x, state.ball.y, BALL_R, 0, Math.PI*2);
+    ctx.fillStyle = '#ffffff'; ctx.fill();
+
+    // Motion trails (subtle)
+    ctx.globalAlpha = 0.15;
+    ctx.beginPath(); ctx.arc(state.ball.x - state.ball.vx*1.2, state.ball.y - state.ball.vy*1.2, BALL_R*0.9, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  function roundRect(c, x, y, w, h, r){
+    c.beginPath();
+    c.moveTo(x+r, y);
+    c.arcTo(x+w, y, x+w, y+h, r);
+    c.arcTo(x+w, y+h, x, y+h, r);
+    c.arcTo(x, y+h, x, y, r);
+    c.arcTo(x, y, x+w, y, r);
+    c.closePath(); c.fill();
+  }
+
+  function update(){
+    // Player movement
+    state.player.y = clamp(state.player.y + state.player.vy, 0, H-PADDLE_H);
+
+    // AI movement (tracks ball with lag and max speed)
+    const targetY = state.ball.y - PADDLE_H/2;
+    const dy = targetY - state.ai.y;
+    state.ai.vy = clamp(dy * state.aiLag, -state.ai.speed, state.ai.speed);
+    state.ai.y = clamp(state.ai.y + state.ai.vy, 0, H-PADDLE_H);
+
+    // Ball movement
+    state.ball.x += state.ball.vx;
+    state.ball.y += state.ball.vy;
+
+    // Wall collisions
+    if(state.ball.y < BALL_R && state.ball.vy < 0){ state.ball.y = BALL_R; state.ball.vy *= -1; }
+    if(state.ball.y > H-BALL_R && state.ball.vy > 0){ state.ball.y = H-BALL_R; state.ball.vy *= -1; }
+
+    // Paddle collisions
+    // Player paddle
+    if(state.ball.x - BALL_R < state.player.x + PADDLE_W &&
+       state.ball.y > state.player.y && state.ball.y < state.player.y + PADDLE_H &&
+       state.ball.vx < 0){
+      state.ball.x = state.player.x + PADDLE_W + BALL_R;
+      bounceFromPaddle(state.player);
+    }
+    // AI paddle
+    if(state.ball.x + BALL_R > state.ai.x &&
+       state.ball.y > state.ai.y && state.ball.y < state.ai.y + PADDLE_H &&
+       state.ball.vx > 0){
+      state.ball.x = state.ai.x - BALL_R;
+      bounceFromPaddle(state.ai);
+    }
+
+    // Scoring
+    if(state.ball.x < -BALL_R){
+      // AI scores
+      state.score.ai++; updateScore();
+      if(checkWinner()) return; // stops loop via state.running=false
+      resetBall(1);
+      flashToast('CPU scored');
+    }
+    if(state.ball.x > W+BALL_R){
+      state.score.p++; updateScore();
+      if(checkWinner()) return;
+      resetBall(-1);
+      flashToast('You scored');
+    }
+  }
+
+  function bounceFromPaddle(p){
+    // Hit position relative to paddle center -> angle
+    const hit = (state.ball.y - (p.y + PADDLE_H/2)) / (PADDLE_H/2);
+    const maxAngle = Math.PI*0.35; // ~63°
+    const speed = Math.min(Math.hypot(state.ball.vx, state.ball.vy)*1.05, 14);
+    const angle = hit * maxAngle;
+    const dir = p === state.player ? 1 : -1; // send to opposite side
+    state.ball.vx = Math.cos(angle) * speed * dir;
+    state.ball.vy = Math.sin(angle) * speed;
+  }
+
+  function updateScore(){
+    pScoreEl.textContent = state.score.p;
+    aiScoreEl.textContent = state.score.ai;
+  }
+
+  function checkWinner(){
+    if(state.score.p >= state.score.to || state.score.ai >= state.score.to){
+      state.running = false; state.paused = true;
+      const winner = state.score.p > state.score.ai ? 'You win! 🎉' : 'CPU wins 💻';
+      statusEl.textContent = winner + ' — Press Reset to play again';
+      flashToast(winner);
+      return true;
+    }
+    return false;
+  }
+
+  function loop(){
+    if(!state.running){ return; }
+    if(!state.paused){ update(); draw(); }
+    requestAnimationFrame(loop);
+  }
+
+  function play(){ if(!state.running){ state.running = true; state.paused=false; statusEl.textContent = 'Game on!'; loop(); } }
+  function togglePause(){ if(!state.running) return; state.paused = !state.paused; statusEl.textContent = state.paused? 'Paused' : 'Game on!'; flashToast(state.paused? 'Paused' : 'Resumed'); }
+  function reset(){
+    state.running=false; state.paused=false;
+    state.player.y = H/2 - PADDLE_H/2; state.player.vy = 0;
+    state.ai.y = H/2 - PADDLE_H/2; state.ai.vy = 0;
+    state.score.p = 0; state.score.ai = 0; state.score.to = parseInt(toScoreSel.value,10);
+    updateScore(); resetBall(Math.random()<0.5?-1:1);
+    statusEl.textContent = 'Press Space or click Start';
+    draw();
+  }
+
+  function flashToast(msg){
+    toast.textContent = msg; toast.classList.add('show');
+    clearTimeout(flashToast._t);
+    flashToast._t = setTimeout(()=> toast.classList.remove('show'), 950);
+  }
+
+  // Input: keyboard
+  const keys = new Set();
+  const keymap = {
+    ArrowUp: -1, ArrowDown: 1, w: -1, s: 1, W: -1, S: 1
+  };
+  window.addEventListener('keydown', e => {
+    if(e.code === 'Space'){ e.preventDefault(); if(!state.running) play(); else togglePause(); return; }
+    if(keymap[e.key] !== undefined){ keys.add(e.key); updatePlayerVy(); }
+  });
+  window.addEventListener('keyup', e => { if(keymap[e.key] !== undefined){ keys.delete(e.key); updatePlayerVy(); }});
+  function updatePlayerVy(){
+    const up = keys.has('ArrowUp')||keys.has('w')||keys.has('W');
+    const down = keys.has('ArrowDown')||keys.has('s')||keys.has('S');
+    state.player.vy = (up? -state.player.speed : 0) + (down? state.player.speed : 0);
+  }
+
+  // Input: touch buttons
+  let touchInterval=null;
+  function hold(dir){
+    clearInterval(touchInterval);
+    state.player.vy = dir * state.player.speed;
+    touchInterval = setInterval(()=>{}, 1000/60);
+  }
+  function release(){ clearInterval(touchInterval); state.player.vy = 0; }
+  ['pointerdown','touchstart','mousedown'].forEach(ev=>{
+    upBtn.addEventListener(ev, ()=> hold(-1));
+    downBtn.addEventListener(ev, ()=> hold(1));
+  });
+  ['pointerup','pointerleave','touchend','mouseup','touchcancel'].forEach(ev=>{
+    upBtn.addEventListener(ev, release); downBtn.addEventListener(ev, release);
+  });
+
+  // Buttons
+  startBtn.addEventListener('click', play);
+  pauseBtn.addEventListener('click', togglePause);
+  resetBtn.addEventListener('click', reset);
+  difficultySel.addEventListener('change', e=> setDifficulty(e.target.value));
+  toScoreSel.addEventListener('change', () => { state.score.to = parseInt(toScoreSel.value,10); });
+
+  // Initial setup
+  setDifficulty(difficultySel.value);
+  reset();
+})();
+</script>
+</body>
+</html>
